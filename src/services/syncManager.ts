@@ -1,5 +1,6 @@
 // Singleton sync manager to prevent multiple concurrent syncs
 import { syncToSupabase, pullFromSupabase, getSyncStatus } from './transactionService';
+import { logger } from '@/lib/logger';
 
 class SyncManager {
   private isSyncing = false;
@@ -26,12 +27,12 @@ class SyncManager {
   // Run initial sync (only once)
   async runInitialSync() {
     if (this.hasRunInitialSync) {
-      console.log('Initial sync already completed, skipping');
+      logger.log('Initial sync already completed, skipping');
       return;
     }
 
     if (this.isSyncing) {
-      console.log('Sync already in progress, skipping initial sync');
+      logger.log('Sync already in progress, skipping initial sync');
       return;
     }
 
@@ -39,9 +40,9 @@ class SyncManager {
 
     if (navigator.onLine) {
       this.isSyncing = true;
-      console.log('Initial sync: Pulling from Supabase...');
+      logger.log('Initial sync: Pulling from Supabase...');
       await pullFromSupabase();
-      console.log('Initial sync: Syncing to Supabase...');
+      logger.log('Initial sync: Syncing to Supabase...');
       await syncToSupabase();
       await this.notifyListeners();
       this.isSyncing = false;
@@ -51,17 +52,17 @@ class SyncManager {
   // Manual sync trigger
   async sync() {
     if (this.isSyncing) {
-      console.log('Sync already in progress, skipping');
+      logger.log('Sync already in progress, skipping');
       return;
     }
 
     if (!navigator.onLine) {
-      console.log('Offline, skipping sync');
+      logger.log('Offline, skipping sync');
       return;
     }
 
     this.isSyncing = true;
-    console.log('Manual sync triggered');
+    logger.log('Manual sync triggered');
     await syncToSupabase();
     await this.notifyListeners();
     this.isSyncing = false;
@@ -70,11 +71,11 @@ class SyncManager {
   // Start background sync interval
   startAutoSync() {
     if (this.syncInterval) {
-      console.log('Auto-sync already running');
+      logger.log('Auto-sync already running');
       return;
     }
 
-    console.log('Starting auto-sync...');
+    logger.log('Starting auto-sync...');
 
     // Periodic sync check every 5 seconds
     this.syncInterval = setInterval(async () => {
@@ -86,7 +87,7 @@ class SyncManager {
       // If there are unsynced items and we're online, try to sync
       if (status.unsynced > 0 && navigator.onLine) {
         this.isSyncing = true;
-        console.log(`Auto-sync: ${status.unsynced} unsynced transactions`);
+        logger.log(`Auto-sync: ${status.unsynced} unsynced transactions`);
         await syncToSupabase();
         await this.notifyListeners();
         this.isSyncing = false;
@@ -97,7 +98,7 @@ class SyncManager {
     const handleOnline = async () => {
       if (this.isSyncing) return;
       this.isSyncing = true;
-      console.log('Network status: Online - starting sync...');
+      logger.log('Network status: Online - starting sync...');
       await syncToSupabase();
       await this.notifyListeners();
       this.isSyncing = false;
@@ -125,7 +126,7 @@ class SyncManager {
       this._cleanup = null;
     }
 
-    console.log('Auto-sync stopped');
+    logger.log('Auto-sync stopped');
   }
 
   // Get current sync status

@@ -6,7 +6,9 @@ export async function resetIndexedDB() {
     const request = indexedDB.deleteDatabase('spending-tracker-db');
 
     request.onsuccess = () => {
-      console.log('Database reset successfully. Please refresh the page.');
+      if (import.meta.env.DEV) {
+        console.log('Database reset successfully. Please refresh the page.');
+      }
       resolve(true);
     };
 
@@ -16,12 +18,14 @@ export async function resetIndexedDB() {
     };
 
     request.onblocked = () => {
-      console.warn('Database reset blocked. Please close all tabs using this app and try again.');
+      if (import.meta.env.DEV) {
+        console.warn('Database reset blocked. Please close all tabs using this app and try again.');
+      }
     };
   });
 }
 
-// Make it available globally for debugging
-if (typeof window !== 'undefined') {
+// Make it available globally for debugging (only in development)
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
   (window as any).resetDB = resetIndexedDB;
 }

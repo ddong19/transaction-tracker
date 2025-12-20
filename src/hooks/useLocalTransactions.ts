@@ -73,7 +73,9 @@ export function useLocalTransactions(selectedMonth?: string) {
       setTransactions(appTransactions);
     } catch (err) {
       setError(err as Error);
-      console.error('Error fetching transactions:', err);
+      if (import.meta.env.DEV) {
+        console.error('Error fetching transactions:', err);
+      }
     } finally {
       setLoading(false);
     }
@@ -124,7 +126,9 @@ export function useLocalTransactions(selectedMonth?: string) {
       // Notify other hooks that a transaction was added
       window.dispatchEvent(new CustomEvent('transactionAdded'));
     } catch (err) {
-      console.error('Error adding transaction:', err);
+      if (import.meta.env.DEV) {
+        console.error('Error adding transaction:', err);
+      }
       throw err;
     }
   };
@@ -148,7 +152,9 @@ export function useLocalTransactions(selectedMonth?: string) {
       // Notify other hooks that a transaction was updated
       window.dispatchEvent(new CustomEvent('transactionUpdated'));
     } catch (err) {
-      console.error('Error updating transaction:', err);
+      if (import.meta.env.DEV) {
+        console.error('Error updating transaction:', err);
+      }
       throw err;
     }
   };
@@ -164,7 +170,9 @@ export function useLocalTransactions(selectedMonth?: string) {
       // Notify other hooks that a transaction was deleted
       window.dispatchEvent(new CustomEvent('transactionDeleted'));
     } catch (err) {
-      console.error('Error deleting transaction:', err);
+      if (import.meta.env.DEV) {
+        console.error('Error deleting transaction:', err);
+      }
       throw err;
     }
   };

@@ -10,10 +10,13 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker
       .register('/service-worker.js')
       .then((registration) => {
-        console.log('Service Worker registered successfully:', registration.scope);
+        if (import.meta.env.DEV) {
+          console.log('Service Worker registered successfully:', registration.scope);
+        }
       })
       .catch((error) => {
-        console.log('Service Worker registration failed:', error);
+        // Always log errors, even in production
+        console.error('Service Worker registration failed:', error);
       });
   });
 }

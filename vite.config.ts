@@ -16,4 +16,15 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vendor chunk for better caching
+          vendor: ['react', 'react-dom'],
+        },
+      },
+    },
+  },
+  publicDir: 'public',
 })

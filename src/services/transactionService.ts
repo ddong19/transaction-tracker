@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 // Transaction service that manages local DB and Supabase sync
 import * as db from '@/lib/db';
 import { supabase, getCurrentUserId } from '@/lib/supabase';
@@ -35,7 +36,7 @@ export async function addLocalTransaction(transaction: {
   });
 
   // Trigger background sync (non-blocking)
-  syncToSupabase().catch(err => console.error('Background sync failed:', err));
+  syncToSupabase().catch(err => logger.error('Background sync failed:', err));
 
   return localTx;
 }
@@ -58,24 +59,24 @@ export async function syncToSupabase(): Promise<void> {
   try {
     const userId = await getCurrentUserId();
     if (!userId) {
-      console.log('No user ID, skipping sync');
+      logger.log('No user ID, skipping sync');
       return;
     }
 
     // Check if online
     if (!navigator.onLine) {
-      console.log('Offline, skipping sync');
+      logger.log('Offline, skipping sync');
       return;
     }
 
     const unsynced = await db.getUnsyncedTransactions();
-    console.log(`Syncing ${unsynced.length} transactions to Supabase...`);
+    logger.log(`Syncing ${unsynced.length} transactions to Supabase...`);
 
     for (const localTx of unsynced) {
       try {
         // If this transaction has a Supabase ID, it means we need to UPDATE, not INSERT
         if (localTx.supabaseId) {
-          console.log(`Updating transaction ${localTx.id} in Supabase (ID: ${localTx.supabaseId})...`);
+          logger.log(`Updating transaction ${localTx.id} in Supabase (ID: ${localTx.supabaseId})...`);
 
           const { error } = await supabase
             .from('transactions')
@@ -89,13 +90,13 @@ export async function syncToSupabase(): Promise<void> {
             .eq('user_id', userId);
 
           if (error) {
-            console.error('Error updating transaction in Supabase:', error);
+            logger.error('Error updating transaction in Supabase:', error);
             continue;
           }
 
           // Mark as synced
           await db.markAsSynced(localTx.id, localTx.supabaseId);
-          console.log(`Updated transaction ${localTx.id} in Supabase`);
+          logger.log(`Updated transaction ${localTx.id} in Supabase`);
         } else {
           // This is a new transaction, INSERT it
           const { data, error } = await supabase
@@ -114,7 +115,7 @@ export async function syncToSupabase(): Promise<void> {
           if (error) {
             // Check if it's a duplicate error (already exists in Supabase)
             if (error.code === '23505' || error.message?.includes('duplicate')) {
-              console.log(`Transaction ${localTx.id} already exists in Supabase, fetching...`);
+              logger.log(`Transaction ${localTx.id} already exists in Supabase, fetching...`);
 
               // Try to find the existing transaction in Supabase
               const { data: existing, error: fetchError } = await supabase
@@ -127,28 +128,28 @@ export async function syncToSupabase(): Promise<void> {
               if (!fetchError && existing) {
                 // Mark as synced with the existing Supabase ID
                 await db.markAsSynced(localTx.id, existing.id);
-                console.log(`Marked transaction ${localTx.id} as synced with existing Supabase ID ${existing.id}`);
+                logger.log(`Marked transaction ${localTx.id} as synced with existing Supabase ID ${existing.id}`);
               } else {
-                console.error('Could not find existing transaction in Supabase:', fetchError);
+                logger.error('Could not find existing transaction in Supabase:', fetchError);
               }
             } else {
-              console.error('Error syncing transaction:', error);
+              logger.error('Error syncing transaction:', error);
             }
             continue;
           }
 
           // Mark as synced in local DB
           await db.markAsSynced(localTx.id, data.id);
-          console.log(`Synced transaction ${localTx.id} -> Supabase ID ${data.id}`);
+          logger.log(`Synced transaction ${localTx.id} -> Supabase ID ${data.id}`);
         }
       } catch (err) {
-        console.error('Error syncing individual transaction:', err);
+        logger.error('Error syncing individual transaction:', err);
       }
     }
 
-    console.log('Sync complete');
+    logger.log('Sync complete');
   } catch (err) {
-    console.error('Sync to Supabase failed:', err);
+    logger.error('Sync to Supabase failed:', err);
   }
 }
 
@@ -158,28 +159,28 @@ export async function pullFromSupabase(): Promise<void> {
   try {
     const userId = await getCurrentUserId();
     if (!userId) {
-      console.log('No user ID, skipping pull');
+      logger.log('No user ID, skipping pull');
       return;
     }
 
     if (!navigator.onLine) {
-      console.log('Offline, skipping pull');
+      logger.log('Offline, skipping pull');
       return;
     }
 
-    console.log('Pulling transactions from Supabase...');
+    logger.log('Pulling transactions from Supabase...');
     const { data: supabaseTransactions, error } = await supabase
       .from('transactions')
       .select('*')
       .eq('user_id', userId);
 
     if (error) {
-      console.error('Error pulling from Supabase:', error);
+      logger.error('Error pulling from Supabase:', error);
       return;
     }
 
     if (!supabaseTransactions || supabaseTransactions.length === 0) {
-      console.log('No transactions in Supabase yet');
+      logger.log('No transactions in Supabase yet');
       return;
     }
 
@@ -209,9 +210,9 @@ export async function pullFromSupabase(): Promise<void> {
       addedCount++;
     }
 
-    console.log(`Pull complete: Added ${addedCount} transactions from Supabase`);
+    logger.log(`Pull complete: Added ${addedCount} transactions from Supabase`);
   } catch (err) {
-    console.error('Pull from Supabase failed:', err);
+    logger.error('Pull from Supabase failed:', err);
   }
 }
 
@@ -247,7 +248,7 @@ export async function updateLocalTransaction(
   });
 
   // Trigger background sync (non-blocking)
-  syncToSupabase().catch(err => console.error('Background sync failed:', err));
+  syncToSupabase().catch(err => logger.error('Background sync failed:', err));
 }
 
 // Delete a local transaction
@@ -272,7 +273,7 @@ export async function deleteLocalTransaction(id: string): Promise<void> {
         .eq('user_id', userId);
 
       if (error) {
-        console.error('Error deleting from Supabase:', error);
+        logger.error('Error deleting from Supabase:', error);
       }
     }
   }

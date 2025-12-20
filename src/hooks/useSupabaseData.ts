@@ -52,7 +52,9 @@ export function useCategories() {
         setCategories(categoriesWithSubs);
       } catch (err) {
         setError(err as Error);
-        console.error('Error fetching categories:', err);
+        if (import.meta.env.DEV) {
+          console.error('Error fetching categories:', err);
+        }
       } finally {
         setLoading(false);
       }
@@ -103,7 +105,9 @@ export function useTransactions(selectedMonth?: string) {
         setTransactions(data || []);
       } catch (err) {
         setError(err as Error);
-        console.error('Error fetching transactions:', err);
+        if (import.meta.env.DEV) {
+          console.error('Error fetching transactions:', err);
+        }
       } finally {
         setLoading(false);
       }
@@ -135,7 +139,9 @@ export function useTransactions(selectedMonth?: string) {
       setTransactions(prev => [data, ...prev]);
       return data;
     } catch (err) {
-      console.error('Error adding transaction:', err);
+      if (import.meta.env.DEV) {
+        console.error('Error adding transaction:', err);
+      }
       throw err;
     }
   };
@@ -169,7 +175,9 @@ export function useSubcategory(subcategoryId: number | null) {
         setSubcategory(data);
       } catch (err) {
         setError(err as Error);
-        console.error('Error fetching subcategory:', err);
+        if (import.meta.env.DEV) {
+          console.error('Error fetching subcategory:', err);
+        }
       } finally {
         setLoading(false);
       }
