@@ -1,0 +1,206 @@
+// Transaction service that manages local DB and Supabase sync
+import * as db from '@/lib/db';
+import { supabase, getCurrentUserId } from '@/lib/supabase';
+import { Transaction, DbCategory, DbSubcategory } from '@/app/types';
+import { parseLocalDate } from '@/lib/dateUtils';
+
+// Convert local transaction to app transaction format
+export function localTransactionToTransaction(
+  localTx: db.LocalTransaction,
+  subcategory: DbSubcategory,
+  category: DbCategory
+): Transaction {
+  return {
+    id: localTx.id,
+    category: category.name,
+    subcategory: subcategory.name,
+    amount: Number(localTx.amount),
+    date: parseLocalDate(localTx.occurredAt), // Use local date parser to avoid timezone issues
+    note: localTx.notes || '',
+  };
+}
+
+// Add transaction to local DB (source of truth)
+export async function addLocalTransaction(transaction: {
+  subcategoryId: number;
+  amount: number;
+  occurredAt: string;
+  notes?: string;
+}): Promise<db.LocalTransaction> {
+  const localTx = await db.addTransaction({
+    subcategoryId: transaction.subcategoryId,
+    amount: transaction.amount,
+    occurredAt: transaction.occurredAt,
+    notes: transaction.notes || null,
+  });
+
+  // Trigger background sync (non-blocking)
+  syncToSupabase().catch(err => console.error('Background sync failed:', err));
+
+  return localTx;
+}
+
+// Get all local transactions
+export async function getLocalTransactions(): Promise<db.LocalTransaction[]> {
+  return await db.getAllTransactions();
+}
+
+// Get local transactions by month
+export async function getLocalTransactionsByMonth(
+  year: number,
+  month: number
+): Promise<db.LocalTransaction[]> {
+  return await db.getTransactionsByMonth(year, month);
+}
+
+// Sync unsynced transactions to Supabase (background process)
+export async function syncToSupabase(): Promise<void> {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.log('No user ID, skipping sync');
+      return;
+    }
+
+    // Check if online
+    if (!navigator.onLine) {
+      console.log('Offline, skipping sync');
+      return;
+    }
+
+    const unsynced = await db.getUnsyncedTransactions();
+    console.log(`Syncing ${unsynced.length} transactions to Supabase...`);
+
+    for (const localTx of unsynced) {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .insert({
+            user_id: userId,
+            local_id: localTx.id,
+            subcategory_id: localTx.subcategoryId,
+            amount: localTx.amount,
+            occurred_at: localTx.occurredAt,
+            notes: localTx.notes,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          // Check if it's a duplicate error (already exists in Supabase)
+          if (error.code === '23505' || error.message?.includes('duplicate')) {
+            console.log(`Transaction ${localTx.id} already exists in Supabase, fetching...`);
+
+            // Try to find the existing transaction in Supabase
+            const { data: existing, error: fetchError } = await supabase
+              .from('transactions')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('local_id', localTx.id)
+              .single();
+
+            if (!fetchError && existing) {
+              // Mark as synced with the existing Supabase ID
+              await db.markAsSynced(localTx.id, existing.id);
+              console.log(`Marked transaction ${localTx.id} as synced with existing Supabase ID ${existing.id}`);
+            } else {
+              console.error('Could not find existing transaction in Supabase:', fetchError);
+            }
+          } else {
+            console.error('Error syncing transaction:', error);
+          }
+          continue;
+        }
+
+        // Mark as synced in local DB
+        await db.markAsSynced(localTx.id, data.id);
+        console.log(`Synced transaction ${localTx.id} -> Supabase ID ${data.id}`);
+      } catch (err) {
+        console.error('Error syncing individual transaction:', err);
+      }
+    }
+
+    console.log('Sync complete');
+  } catch (err) {
+    console.error('Sync to Supabase failed:', err);
+  }
+}
+
+// Pull transactions from Supabase and merge into local DB
+// (Useful for initial setup or syncing from another device)
+export async function pullFromSupabase(): Promise<void> {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.log('No user ID, skipping pull');
+      return;
+    }
+
+    if (!navigator.onLine) {
+      console.log('Offline, skipping pull');
+      return;
+    }
+
+    console.log('Pulling transactions from Supabase...');
+    const { data: supabaseTransactions, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error pulling from Supabase:', error);
+      return;
+    }
+
+    if (!supabaseTransactions || supabaseTransactions.length === 0) {
+      console.log('No transactions in Supabase yet');
+      return;
+    }
+
+    const localTransactions = await db.getAllTransactions();
+    const localIds = new Set(localTransactions.map(t => t.id));
+    const supabaseIds = new Set(localTransactions.map(t => t.supabaseId).filter(Boolean));
+
+    let addedCount = 0;
+
+    // Add transactions from Supabase that don't exist locally
+    for (const supaTx of supabaseTransactions) {
+      // Skip if we already have this transaction (by local_id or supabase id)
+      if (localIds.has(supaTx.local_id) || supabaseIds.has(supaTx.id)) {
+        continue;
+      }
+
+      // This is a new transaction from another device or initial sync
+      const newLocalTx = await db.addTransaction({
+        subcategoryId: supaTx.subcategory_id,
+        amount: Number(supaTx.amount),
+        occurredAt: supaTx.occurred_at,
+        notes: supaTx.notes,
+      });
+
+      // Mark as already synced with the Supabase ID
+      await db.markAsSynced(newLocalTx.id, supaTx.id);
+      addedCount++;
+    }
+
+    console.log(`Pull complete: Added ${addedCount} transactions from Supabase`);
+  } catch (err) {
+    console.error('Pull from Supabase failed:', err);
+  }
+}
+
+// Get sync status
+export async function getSyncStatus(): Promise<{
+  total: number;
+  synced: number;
+  unsynced: number;
+}> {
+  const all = await db.getAllTransactions();
+  const unsynced = await db.getUnsyncedTransactions();
+
+  return {
+    total: all.length,
+    synced: all.length - unsynced.length,
+    unsynced: unsynced.length,
+  };
+}
