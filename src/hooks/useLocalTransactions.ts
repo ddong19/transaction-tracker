@@ -6,6 +6,8 @@ import {
   getLocalTransactions,
   getLocalTransactionsByMonth,
   localTransactionToTransaction,
+  updateLocalTransaction,
+  deleteLocalTransaction,
 } from '@/services/transactionService';
 import { syncManager } from '@/services/syncManager';
 
@@ -128,11 +130,53 @@ export function useLocalTransactions(selectedMonth?: string) {
     }
   };
 
+  // Update transaction in local DB
+  const updateTransaction = async (
+    id: string,
+    updates: {
+      subcategoryId?: number;
+      amount?: number;
+      occurredAt?: string;
+      notes?: string;
+    }
+  ) => {
+    try {
+      await updateLocalTransaction(id, updates);
+
+      // Refresh transactions
+      await fetchTransactions();
+
+      // Notify other hooks that a transaction was updated
+      window.dispatchEvent(new CustomEvent('transactionUpdated'));
+    } catch (err) {
+      console.error('Error updating transaction:', err);
+      throw err;
+    }
+  };
+
+  // Delete transaction from local DB
+  const deleteTransaction = async (id: string) => {
+    try {
+      await deleteLocalTransaction(id);
+
+      // Refresh transactions
+      await fetchTransactions();
+
+      // Notify other hooks that a transaction was deleted
+      window.dispatchEvent(new CustomEvent('transactionDeleted'));
+    } catch (err) {
+      console.error('Error deleting transaction:', err);
+      throw err;
+    }
+  };
+
   return {
     transactions,
     loading,
     error,
     addTransaction,
+    updateTransaction,
+    deleteTransaction,
     refetch: fetchTransactions,
     syncStatus,
   };

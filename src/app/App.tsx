@@ -3,12 +3,14 @@ import { Wallet, Receipt, LogOut, WifiOff, Cloud } from 'lucide-react';
 import { OverviewPage } from './components/overview-page';
 import { TransactionsPage } from './components/transactions-page';
 import { AddTransactionDialog } from './components/add-transaction-dialog';
+import { EditTransactionDialog } from './components/edit-transaction-dialog';
 import { MonthSelector } from './components/month-selector';
 import { useLocalTransactions } from '../hooks/useLocalTransactions';
 import { useAllTransactionMonths } from '../hooks/useAllTransactionMonths';
 import { useCategories } from '../hooks/useSupabaseData';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthScreen } from '../components/AuthScreen';
+import { Transaction } from './types';
 
 type Tab = 'overview' | 'transactions';
 
@@ -38,9 +40,11 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
   // Fetch transactions for selected month (single source)
-  const { transactions, loading, addTransaction, syncStatus } = useLocalTransactions(selectedMonth);
+  const { transactions, loading, addTransaction, updateTransaction, deleteTransaction, syncStatus } = useLocalTransactions(selectedMonth);
 
   // Fetch categories and subcategories
   const { categories, loading: loadingCategories } = useCategories();
@@ -60,6 +64,32 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
       occurredAt: newTransaction.date.toISOString().split('T')[0],
       notes: newTransaction.note || undefined,
     });
+  };
+
+  const handleTransactionClick = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateTransaction = async (updates: {
+    subcategoryId: number;
+    amount: number;
+    date: Date;
+    note: string;
+  }) => {
+    if (!selectedTransaction) return;
+
+    await updateTransaction(selectedTransaction.id, {
+      subcategoryId: updates.subcategoryId,
+      amount: updates.amount,
+      occurredAt: updates.date.toISOString().split('T')[0],
+      notes: updates.note || undefined,
+    });
+  };
+
+  const handleDeleteTransaction = async () => {
+    if (!selectedTransaction) return;
+    await deleteTransaction(selectedTransaction.id);
   };
 
   return (
@@ -139,6 +169,7 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
             selectedMonth={selectedMonth}
             transactions={transactions}
             onAddTransaction={() => setIsAddDialogOpen(true)}
+            onTransactionClick={handleTransactionClick}
           />
         )}
       </div>
@@ -148,6 +179,20 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
         isOpen={isAddDialogOpen}
         onClose={() => setIsAddDialogOpen(false)}
         onAdd={handleAddTransaction}
+        categories={categories}
+        loading={loadingCategories}
+      />
+
+      {/* Edit Transaction Dialog */}
+      <EditTransactionDialog
+        isOpen={isEditDialogOpen}
+        onClose={() => {
+          setIsEditDialogOpen(false);
+          setSelectedTransaction(null);
+        }}
+        onUpdate={handleUpdateTransaction}
+        onDelete={handleDeleteTransaction}
+        transaction={selectedTransaction}
         categories={categories}
         loading={loadingCategories}
       />

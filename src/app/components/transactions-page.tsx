@@ -7,9 +7,10 @@ interface TransactionsPageProps {
   selectedMonth: string;
   transactions: Transaction[];
   onAddTransaction: () => void;
+  onTransactionClick: (transaction: Transaction) => void;
 }
 
-export function TransactionsPage({ selectedMonth, transactions, onAddTransaction }: TransactionsPageProps) {
+export function TransactionsPage({ selectedMonth, transactions, onAddTransaction, onTransactionClick }: TransactionsPageProps) {
   const filteredTransactions = useMemo(() => {
     return transactions
       .filter(t => {
@@ -31,9 +32,10 @@ export function TransactionsPage({ selectedMonth, transactions, onAddTransaction
         {filteredTransactions.length > 0 ? (
           <div className="space-y-3 pt-4">
             {filteredTransactions.map((transaction) => (
-              <div
+              <button
                 key={transaction.id}
-                className="bg-white rounded-xl border border-slate-200 p-4"
+                onClick={() => onTransactionClick(transaction)}
+                className="w-full bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-300 hover:shadow-sm transition-all cursor-pointer text-left"
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex-1">
@@ -54,7 +56,7 @@ export function TransactionsPage({ selectedMonth, transactions, onAddTransaction
                     ${transaction.amount.toFixed(2)}
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         ) : (

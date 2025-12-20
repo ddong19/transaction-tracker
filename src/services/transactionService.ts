@@ -73,48 +73,74 @@ export async function syncToSupabase(): Promise<void> {
 
     for (const localTx of unsynced) {
       try {
-        const { data, error } = await supabase
-          .from('transactions')
-          .insert({
-            user_id: userId,
-            local_id: localTx.id,
-            subcategory_id: localTx.subcategoryId,
-            amount: localTx.amount,
-            occurred_at: localTx.occurredAt,
-            notes: localTx.notes,
-          })
-          .select()
-          .single();
+        // If this transaction has a Supabase ID, it means we need to UPDATE, not INSERT
+        if (localTx.supabaseId) {
+          console.log(`Updating transaction ${localTx.id} in Supabase (ID: ${localTx.supabaseId})...`);
 
-        if (error) {
-          // Check if it's a duplicate error (already exists in Supabase)
-          if (error.code === '23505' || error.message?.includes('duplicate')) {
-            console.log(`Transaction ${localTx.id} already exists in Supabase, fetching...`);
+          const { error } = await supabase
+            .from('transactions')
+            .update({
+              subcategory_id: localTx.subcategoryId,
+              amount: localTx.amount,
+              occurred_at: localTx.occurredAt,
+              notes: localTx.notes,
+            })
+            .eq('id', localTx.supabaseId)
+            .eq('user_id', userId);
 
-            // Try to find the existing transaction in Supabase
-            const { data: existing, error: fetchError } = await supabase
-              .from('transactions')
-              .select('id')
-              .eq('user_id', userId)
-              .eq('local_id', localTx.id)
-              .single();
-
-            if (!fetchError && existing) {
-              // Mark as synced with the existing Supabase ID
-              await db.markAsSynced(localTx.id, existing.id);
-              console.log(`Marked transaction ${localTx.id} as synced with existing Supabase ID ${existing.id}`);
-            } else {
-              console.error('Could not find existing transaction in Supabase:', fetchError);
-            }
-          } else {
-            console.error('Error syncing transaction:', error);
+          if (error) {
+            console.error('Error updating transaction in Supabase:', error);
+            continue;
           }
-          continue;
-        }
 
-        // Mark as synced in local DB
-        await db.markAsSynced(localTx.id, data.id);
-        console.log(`Synced transaction ${localTx.id} -> Supabase ID ${data.id}`);
+          // Mark as synced
+          await db.markAsSynced(localTx.id, localTx.supabaseId);
+          console.log(`Updated transaction ${localTx.id} in Supabase`);
+        } else {
+          // This is a new transaction, INSERT it
+          const { data, error } = await supabase
+            .from('transactions')
+            .insert({
+              user_id: userId,
+              local_id: localTx.id,
+              subcategory_id: localTx.subcategoryId,
+              amount: localTx.amount,
+              occurred_at: localTx.occurredAt,
+              notes: localTx.notes,
+            })
+            .select()
+            .single();
+
+          if (error) {
+            // Check if it's a duplicate error (already exists in Supabase)
+            if (error.code === '23505' || error.message?.includes('duplicate')) {
+              console.log(`Transaction ${localTx.id} already exists in Supabase, fetching...`);
+
+              // Try to find the existing transaction in Supabase
+              const { data: existing, error: fetchError } = await supabase
+                .from('transactions')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('local_id', localTx.id)
+                .single();
+
+              if (!fetchError && existing) {
+                // Mark as synced with the existing Supabase ID
+                await db.markAsSynced(localTx.id, existing.id);
+                console.log(`Marked transaction ${localTx.id} as synced with existing Supabase ID ${existing.id}`);
+              } else {
+                console.error('Could not find existing transaction in Supabase:', fetchError);
+              }
+            } else {
+              console.error('Error syncing transaction:', error);
+            }
+            continue;
+          }
+
+          // Mark as synced in local DB
+          await db.markAsSynced(localTx.id, data.id);
+          console.log(`Synced transaction ${localTx.id} -> Supabase ID ${data.id}`);
+        }
       } catch (err) {
         console.error('Error syncing individual transaction:', err);
       }
@@ -203,4 +229,51 @@ export async function getSyncStatus(): Promise<{
     synced: all.length - unsynced.length,
     unsynced: unsynced.length,
   };
+}
+
+// Update a local transaction
+export async function updateLocalTransaction(
+  id: string,
+  updates: {
+    subcategoryId?: number;
+    amount?: number;
+    occurredAt?: string;
+    notes?: string;
+  }
+): Promise<void> {
+  await db.updateTransaction(id, {
+    ...updates,
+    syncedToSupabase: false, // Mark as unsynced so it will re-sync
+  });
+
+  // Trigger background sync (non-blocking)
+  syncToSupabase().catch(err => console.error('Background sync failed:', err));
+}
+
+// Delete a local transaction
+export async function deleteLocalTransaction(id: string): Promise<void> {
+  const localTx = await db.getAllTransactions().then(txs => txs.find(t => t.id === id));
+
+  if (!localTx) {
+    throw new Error('Transaction not found');
+  }
+
+  // Delete from local DB
+  await db.deleteTransaction(id);
+
+  // If it was synced to Supabase, delete from there too
+  if (localTx.syncedToSupabase && localTx.supabaseId) {
+    const userId = await getCurrentUserId();
+    if (userId && navigator.onLine) {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', localTx.supabaseId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error deleting from Supabase:', error);
+      }
+    }
+  }
 }
