@@ -79,8 +79,8 @@ export function AddTransactionDialog({ isOpen, onClose, onAdd, categories, loadi
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">$</span>
               <Input
                 id="amount"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}

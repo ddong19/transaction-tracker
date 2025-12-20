@@ -47,6 +47,11 @@ export function OverviewPage({ selectedMonth, transactions }: OverviewPageProps)
       }
     });
 
+    // Sort subcategories by amount (highest to lowest)
+    data.forEach(category => {
+      category.subcategories.sort((a, b) => b.amount - a.amount);
+    });
+
     return data;
   }, [transactions, selectedMonth]);
 
