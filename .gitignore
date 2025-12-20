@@ -53,3 +53,8 @@ Thumbs.db
 
 # Build files
 build
+dev-dist
+
+# Documentation and helper files
+public/icons/README.md
+generate-placeholder-icons.js
