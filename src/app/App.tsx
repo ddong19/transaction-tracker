@@ -1,116 +1,123 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Wallet, Receipt } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Wallet, Receipt, LogOut, WifiOff, Cloud } from 'lucide-react';
 import { OverviewPage } from './components/overview-page';
 import { TransactionsPage } from './components/transactions-page';
 import { AddTransactionDialog } from './components/add-transaction-dialog';
 import { MonthSelector } from './components/month-selector';
-import { Transaction } from './types';
+import { useTransactions } from '../hooks/useTransactions';
+import { useCategories } from '../hooks/useSupabaseData';
+import { useAuth } from '../contexts/AuthContext';
+import { AuthScreen } from '../components/AuthScreen';
 
 type Tab = 'overview' | 'transactions';
 
-// Mock data for demonstration
-const MOCK_TRANSACTIONS: Transaction[] = [
-  // December 2025 - Current month
-  { id: '1', category: 'Needs', subcategory: 'Rent', amount: 1500, date: new Date(2025, 11, 1), note: 'Monthly rent payment' },
-  { id: '2', category: 'Needs', subcategory: 'Groceries', amount: 85.42, date: new Date(2025, 11, 3), note: 'Weekly groceries' },
-  { id: '3', category: 'Wants', subcategory: 'Dining', amount: 45.50, date: new Date(2025, 11, 5), note: 'Dinner with friends' },
-  { id: '4', category: 'Needs', subcategory: 'Utilities', amount: 120.00, date: new Date(2025, 11, 7), note: 'Electric and water' },
-  { id: '5', category: 'Wants', subcategory: 'Entertainment', amount: 15.99, date: new Date(2025, 11, 8), note: 'Movie tickets' },
-  { id: '6', category: 'Savings', subcategory: 'Emergency Fund', amount: 500, date: new Date(2025, 11, 10), note: 'Monthly savings' },
-  { id: '7', category: 'Tithing', subcategory: 'Church', amount: 200, date: new Date(2025, 11, 10), note: 'Weekly tithe' },
-  { id: '8', category: 'Needs', subcategory: 'Groceries', amount: 92.18, date: new Date(2025, 11, 10), note: 'Weekly groceries' },
-  { id: '9', category: 'Wants', subcategory: 'Shopping', amount: 68.99, date: new Date(2025, 11, 12), note: 'New shoes' },
-  { id: '10', category: 'Needs', subcategory: 'Transportation', amount: 50.00, date: new Date(2025, 11, 14), note: 'Gas' },
-  { id: '11', category: 'Wants', subcategory: 'Dining', amount: 32.75, date: new Date(2025, 11, 15), note: 'Lunch downtown' },
-  { id: '12', category: 'Needs', subcategory: 'Healthcare', amount: 25.00, date: new Date(2025, 11, 16), note: 'Pharmacy co-pay' },
-  { id: '13', category: 'Wants', subcategory: 'Subscriptions', amount: 12.99, date: new Date(2025, 11, 17), note: 'Streaming service' },
-  { id: '14', category: 'Needs', subcategory: 'Groceries', amount: 78.65, date: new Date(2025, 11, 17), note: 'Weekly groceries' },
-  { id: '15', category: 'Tithing', subcategory: 'Charity', amount: 50.00, date: new Date(2025, 11, 18), note: 'Local food bank' },
-  { id: '16', category: 'Wants', subcategory: 'Entertainment', amount: 28.00, date: new Date(2025, 11, 19), note: 'Concert tickets' },
-  
-  // November 2025 - Previous month
-  { id: '17', category: 'Needs', subcategory: 'Rent', amount: 1500, date: new Date(2025, 10, 1), note: 'Monthly rent payment' },
-  { id: '18', category: 'Needs', subcategory: 'Groceries', amount: 320.50, date: new Date(2025, 10, 5), note: 'Monthly groceries' },
-  { id: '19', category: 'Wants', subcategory: 'Dining', amount: 125.80, date: new Date(2025, 10, 8), note: 'Restaurants' },
-  { id: '20', category: 'Needs', subcategory: 'Utilities', amount: 115.00, date: new Date(2025, 10, 10), note: 'Monthly utilities' },
-  { id: '21', category: 'Savings', subcategory: 'Investments', amount: 300, date: new Date(2025, 10, 15), note: 'Index fund' },
-  { id: '22', category: 'Tithing', subcategory: 'Church', amount: 180, date: new Date(2025, 10, 15), note: 'Monthly tithe' },
-  { id: '23', category: 'Needs', subcategory: 'Transportation', amount: 150.00, date: new Date(2025, 10, 20), note: 'Gas and maintenance' },
-  { id: '24', category: 'Wants', subcategory: 'Shopping', amount: 89.99, date: new Date(2025, 10, 22), note: 'Clothing' },
-  { id: '25', category: 'Wants', subcategory: 'Entertainment', amount: 45.00, date: new Date(2025, 10, 25), note: 'Games' },
-];
-
 export default function App() {
+  const { user, loading: authLoading, signOut } = useAuth();
+
+  // Show auth screen if not logged in
+  if (authLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-slate-600">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  return <AuthenticatedApp onSignOut={signOut} />;
+}
+
+function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
-  // Load transactions from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem('spending-tracker-transactions');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        const withDates = parsed.map((t: any) => ({
-          ...t,
-          date: new Date(t.date),
-        }));
-        setTransactions(withDates);
-      } catch (e) {
-        console.error('Failed to load transactions', e);
-      }
-    } else {
-      // If no data in localStorage, use mock data
-      setTransactions(MOCK_TRANSACTIONS);
-    }
-  }, []);
+  // Fetch all transactions (not filtered by month for calculating available months)
+  const { transactions: allTransactions, loading: loadingAll } = useTransactions();
 
-  // Save transactions to localStorage
-  useEffect(() => {
-    localStorage.setItem('spending-tracker-transactions', JSON.stringify(transactions));
-  }, [transactions]);
+  // Fetch transactions for selected month
+  const { transactions, loading, addTransaction, pendingCount, isOffline } = useTransactions(selectedMonth);
 
-  // Calculate available months
+  // Fetch categories and subcategories
+  const { categories, loading: loadingCategories } = useCategories();
+
+  // Calculate available months from all transactions
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
-    
+
     // Add current month
     const now = new Date();
     months.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
-    
+
     // Add months from transactions
-    transactions.forEach(t => {
+    allTransactions.forEach(t => {
       const month = `${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`;
       months.add(month);
     });
-    
+
     // Sort in descending order (newest first)
     return Array.from(months).sort().reverse();
-  }, [transactions]);
+  }, [allTransactions]);
 
-  const handleAddTransaction = (newTransaction: Omit<Transaction, 'id'>) => {
-    const transaction: Transaction = {
-      ...newTransaction,
-      id: crypto.randomUUID(),
-    };
-    setTransactions(prev => [...prev, transaction]);
+  const handleAddTransaction = async (newTransaction: {
+    subcategoryId: number;
+    amount: number;
+    date: Date;
+    note: string;
+  }) => {
+    await addTransaction({
+      subcategoryId: newTransaction.subcategoryId,
+      amount: newTransaction.amount,
+      occurredAt: newTransaction.date.toISOString().split('T')[0],
+      notes: newTransaction.note || undefined,
+    });
   };
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 max-w-md mx-auto">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-4 py-3">
+        {/* Offline/Sync indicator */}
+        {(isOffline || pendingCount > 0) && (
+          <div className={`mb-2 px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${
+            isOffline ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'
+          }`}>
+            {isOffline ? (
+              <>
+                <WifiOff className="w-4 h-4" />
+                <span>Offline - Changes will sync when connected</span>
+              </>
+            ) : pendingCount > 0 ? (
+              <>
+                <Cloud className="w-4 h-4" />
+                <span>Syncing {pendingCount} transaction{pendingCount > 1 ? 's' : ''}...</span>
+              </>
+            ) : null}
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-semibold">Spending Tracker</h1>
-          <MonthSelector
-            availableMonths={availableMonths}
-            selectedMonth={selectedMonth}
-            onMonthChange={setSelectedMonth}
-          />
+          <div className="flex items-center gap-2">
+            <MonthSelector
+              availableMonths={availableMonths}
+              selectedMonth={selectedMonth}
+              onMonthChange={setSelectedMonth}
+            />
+            <button
+              onClick={onSignOut}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4 text-slate-600" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -158,6 +165,8 @@ export default function App() {
         isOpen={isAddDialogOpen}
         onClose={() => setIsAddDialogOpen(false)}
         onAdd={handleAddTransaction}
+        categories={categories}
+        loading={loadingCategories}
       />
     </div>
   );

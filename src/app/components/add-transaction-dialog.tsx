@@ -1,57 +1,56 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
+import { CategoryWithSubcategories } from '../../hooks/useSupabaseData';
 
 interface AddTransactionDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (transaction: {
-    category: string;
-    subcategory: string;
+    subcategoryId: number;
     amount: number;
     date: Date;
     note: string;
   }) => void;
+  categories: CategoryWithSubcategories[];
+  loading: boolean;
 }
 
-const CATEGORIES = ['Needs', 'Wants', 'Savings', 'Tithing'];
-
-const SUBCATEGORIES: Record<string, string[]> = {
-  Needs: ['Rent', 'Utilities', 'Groceries', 'Transportation', 'Insurance', 'Healthcare'],
-  Wants: ['Dining', 'Entertainment', 'Shopping', 'Hobbies', 'Travel', 'Subscriptions'],
-  Savings: ['Emergency Fund', 'Investments', 'Retirement', 'General Savings'],
-  Tithing: ['Church', 'Charity', 'Donations'],
-};
-
-export function AddTransactionDialog({ isOpen, onClose, onAdd }: AddTransactionDialogProps) {
-  const [category, setCategory] = useState('');
-  const [subcategory, setSubcategory] = useState('');
+export function AddTransactionDialog({ isOpen, onClose, onAdd, categories, loading }: AddTransactionDialogProps) {
+  const [categoryId, setCategoryId] = useState('');
+  const [subcategoryId, setSubcategoryId] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [note, setNote] = useState('');
 
+  // Get subcategories for selected category
+  const availableSubcategories = useMemo(() => {
+    if (!categoryId) return [];
+    const category = categories.find(c => c.id.toString() === categoryId);
+    return category?.subcategories || [];
+  }, [categoryId, categories]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!category || !subcategory || !amount) {
+
+    if (!subcategoryId || !amount) {
       return;
     }
 
     onAdd({
-      category,
-      subcategory,
+      subcategoryId: parseInt(subcategoryId),
       amount: parseFloat(amount),
       date: new Date(date),
       note,
     });
 
     // Reset form
-    setCategory('');
-    setSubcategory('');
+    setCategoryId('');
+    setSubcategoryId('');
     setAmount('');
     setDate(new Date().toISOString().split('T')[0]);
     setNote('');
@@ -93,34 +92,38 @@ export function AddTransactionDialog({ isOpen, onClose, onAdd }: AddTransactionD
 
           <div className="space-y-2">
             <Label htmlFor="category">Category</Label>
-            <Select value={category} onValueChange={(val) => {
-              setCategory(val);
-              setSubcategory('');
-            }}>
+            <Select
+              value={categoryId}
+              onValueChange={(val) => {
+                setCategoryId(val);
+                setSubcategoryId('');
+              }}
+              disabled={loading}
+            >
               <SelectTrigger id="category">
-                <SelectValue placeholder="Select category" />
+                <SelectValue placeholder={loading ? "Loading..." : "Select category"} />
               </SelectTrigger>
               <SelectContent>
-                {CATEGORIES.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id.toString()}>
+                    {cat.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {category && (
+          {categoryId && availableSubcategories.length > 0 && (
             <div className="space-y-2">
               <Label htmlFor="subcategory">Subcategory</Label>
-              <Select value={subcategory} onValueChange={setSubcategory}>
+              <Select value={subcategoryId} onValueChange={setSubcategoryId}>
                 <SelectTrigger id="subcategory">
                   <SelectValue placeholder="Select subcategory" />
                 </SelectTrigger>
                 <SelectContent>
-                  {SUBCATEGORIES[category]?.map((sub) => (
-                    <SelectItem key={sub} value={sub}>
-                      {sub}
+                  {availableSubcategories.map((sub) => (
+                    <SelectItem key={sub.id} value={sub.id.toString()}>
+                      {sub.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
