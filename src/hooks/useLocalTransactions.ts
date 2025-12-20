@@ -36,9 +36,8 @@ export function useLocalTransactions(selectedMonth?: string) {
 
   // Fetch transactions from local DB (memoized to prevent unnecessary recreations)
   const fetchTransactions = useCallback(async () => {
-    // Don't fetch if categories aren't loaded yet
+    // Don't fetch if categories aren't loaded yet, but keep loading state true
     if (categories.length === 0) {
-      setLoading(false);
       return;
     }
 

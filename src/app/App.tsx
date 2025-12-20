@@ -162,7 +162,11 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
-        {activeTab === 'overview' ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-slate-600">Loading transactions...</div>
+          </div>
+        ) : activeTab === 'overview' ? (
           <OverviewPage selectedMonth={selectedMonth} transactions={transactions} />
         ) : (
           <TransactionsPage
