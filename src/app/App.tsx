@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Wallet, Receipt, LogOut, WifiOff, Cloud } from 'lucide-react';
+import { Wallet, Receipt, LogOut, WifiOff, Cloud, RefreshCw } from 'lucide-react';
 import { OverviewPage } from './components/overview-page';
 import { TransactionsPage } from './components/transactions-page';
 import { AddTransactionDialog } from './components/add-transaction-dialog';
@@ -11,6 +11,7 @@ import { useCategories } from '../hooks/useSupabaseData';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthScreen } from '../components/AuthScreen';
 import { Transaction } from './types';
+import { pullFromSupabase } from '../services/transactionService';
 
 type Tab = 'overview' | 'transactions';
 
@@ -42,6 +43,7 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Fetch transactions for selected month (single source)
   const { transactions, loading, addTransaction, updateTransaction, deleteTransaction, syncStatus } = useLocalTransactions(selectedMonth);
@@ -51,6 +53,20 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
 
   // Get all available months (lightweight query, just month strings)
   const availableMonths = useAllTransactionMonths();
+
+  // Manual sync from cloud
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await pullFromSupabase();
+      // Reload the page to show the new data
+      window.location.reload();
+    } catch (error) {
+      console.error('Manual sync failed:', error);
+      alert('Sync failed. Please try again.');
+      setIsSyncing(false);
+    }
+  };
 
   const handleAddTransaction = async (newTransaction: {
     subcategoryId: number;
@@ -123,6 +139,14 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
               selectedMonth={selectedMonth}
               onMonthChange={setSelectedMonth}
             />
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+              title="Sync from cloud"
+            >
+              <RefreshCw className={`w-4 h-4 text-slate-600 ${isSyncing ? 'animate-spin' : ''}`} />
+            </button>
             <button
               onClick={onSignOut}
               className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
