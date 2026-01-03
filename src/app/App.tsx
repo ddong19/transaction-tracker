@@ -133,7 +133,7 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
 
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-semibold">Spending Tracker</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <MonthSelector
               availableMonths={availableMonths}
               selectedMonth={selectedMonth}

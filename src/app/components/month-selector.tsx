@@ -16,7 +16,7 @@ export function MonthSelector({ availableMonths, selectedMonth, onMonthChange }:
 
   return (
     <Select value={selectedMonth} onValueChange={onMonthChange}>
-      <SelectTrigger className="w-auto min-w-[180px] border-0 bg-transparent hover:bg-slate-100 rounded-lg">
+      <SelectTrigger className="h-8 px-2.5 text-sm border-0 bg-transparent hover:bg-slate-100 rounded-lg gap-1">
         <SelectValue>
           {formatMonth(selectedMonth)}
         </SelectValue>
