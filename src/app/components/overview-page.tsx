@@ -12,7 +12,7 @@ interface CategoryData {
   subcategories: { name: string; amount: number }[];
 }
 
-const CATEGORIES = ['Needs', 'Wants', 'Savings', 'Tithing'];
+const CATEGORIES = ['Needs', 'Wants', 'Savings', 'Tithe'];
 
 export function OverviewPage({ selectedMonth, transactions }: OverviewPageProps) {
   const categoryData = useMemo(() => {
