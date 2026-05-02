@@ -2,8 +2,9 @@
 // This is the source of truth for transactions
 
 const DB_NAME = 'spending-tracker-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for scheduled transactions
 const TRANSACTIONS_STORE = 'transactions';
+const SCHEDULED_TRANSACTIONS_STORE = 'scheduledTransactions';
 
 export interface LocalTransaction {
   id: string; // local UUID
@@ -15,6 +16,24 @@ export interface LocalTransaction {
   updatedAt: number; // timestamp
   syncedToSupabase: boolean; // has this been backed up?
   supabaseId: number | null; // ID from supabase after sync
+  scheduledTransactionId?: string | null; // If generated from a scheduled transaction
+}
+
+export type ScheduleType = 'day-of-month' | 'day-of-week';
+
+export interface ScheduledTransaction {
+  id: string; // local UUID
+  subcategoryId: number;
+  amount: number;
+  notes: string | null;
+  scheduleType: ScheduleType;
+  // For day-of-month: 1-31, for day-of-week: 0-6 (0=Sunday)
+  scheduleValue: number;
+  isEnabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+  // Track which months have been generated (format: "YYYY-MM")
+  generatedMonths: string[];
 }
 
 // Open/create the database
@@ -27,9 +46,13 @@ function openDB(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
+      const transaction = (event.target as IDBOpenDBRequest).transaction;
+
+      console.log('Database upgrade needed. Old version:', (event as IDBVersionChangeEvent).oldVersion, 'New version:', (event as IDBVersionChangeEvent).newVersion);
 
       // Create transactions store if it doesn't exist
       if (!db.objectStoreNames.contains(TRANSACTIONS_STORE)) {
+        console.log('Creating transactions store...');
         const store = db.createObjectStore(TRANSACTIONS_STORE, { keyPath: 'id' });
 
         // Create indexes for efficient querying
@@ -37,6 +60,18 @@ function openDB(): Promise<IDBDatabase> {
         store.createIndex('syncedToSupabase', 'syncedToSupabase', { unique: false });
         store.createIndex('subcategoryId', 'subcategoryId', { unique: false });
       }
+
+      // Create scheduled transactions store if it doesn't exist (added in version 2)
+      if (!db.objectStoreNames.contains(SCHEDULED_TRANSACTIONS_STORE)) {
+        console.log('Creating scheduled transactions store...');
+        const store = db.createObjectStore(SCHEDULED_TRANSACTIONS_STORE, { keyPath: 'id' });
+
+        // Create indexes for efficient querying
+        store.createIndex('isEnabled', 'isEnabled', { unique: false });
+        store.createIndex('subcategoryId', 'subcategoryId', { unique: false });
+      }
+
+      console.log('Database upgrade complete. Available stores:', Array.from(db.objectStoreNames));
     };
   });
 }
@@ -76,7 +111,7 @@ export async function getTransactionsByMonth(year: number, month: number): Promi
 }
 
 // Add a new transaction to local DB
-export async function addTransaction(transaction: Omit<LocalTransaction, 'id' | 'createdAt' | 'updatedAt' | 'syncedToSupabase' | 'supabaseId'>): Promise<LocalTransaction> {
+export async function addTransaction(transaction: Omit<LocalTransaction, 'id' | 'createdAt' | 'updatedAt' | 'syncedToSupabase' | 'supabaseId' | 'scheduledTransactionId'>): Promise<LocalTransaction> {
   const db = await openDB();
 
   const newTransaction: LocalTransaction = {
@@ -181,5 +216,139 @@ export async function clearAllTransactions(): Promise<void> {
 
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
+  });
+}
+
+// ============== Scheduled Transactions ==============
+
+// Get all scheduled transactions
+export async function getAllScheduledTransactions(): Promise<ScheduledTransaction[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(SCHEDULED_TRANSACTIONS_STORE, 'readonly');
+    const store = transaction.objectStore(SCHEDULED_TRANSACTIONS_STORE);
+    const request = store.getAll();
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Get enabled scheduled transactions
+export async function getEnabledScheduledTransactions(): Promise<ScheduledTransaction[]> {
+  const all = await getAllScheduledTransactions();
+  return all.filter(st => st.isEnabled);
+}
+
+// Add a new scheduled transaction
+export async function addScheduledTransaction(
+  scheduledTx: Omit<ScheduledTransaction, 'id' | 'createdAt' | 'updatedAt' | 'generatedMonths'>
+): Promise<ScheduledTransaction> {
+  const db = await openDB();
+
+  const newScheduledTx: ScheduledTransaction = {
+    ...scheduledTx,
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    generatedMonths: [],
+  };
+
+  return new Promise((resolve, reject) => {
+    const txn = db.transaction(SCHEDULED_TRANSACTIONS_STORE, 'readwrite');
+    const store = txn.objectStore(SCHEDULED_TRANSACTIONS_STORE);
+    const request = store.add(newScheduledTx);
+
+    request.onsuccess = () => resolve(newScheduledTx);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Update a scheduled transaction
+export async function updateScheduledTransaction(
+  id: string,
+  updates: Partial<ScheduledTransaction>
+): Promise<void> {
+  const db = await openDB();
+
+  return new Promise(async (resolve, reject) => {
+    const txn = db.transaction(SCHEDULED_TRANSACTIONS_STORE, 'readwrite');
+    const store = txn.objectStore(SCHEDULED_TRANSACTIONS_STORE);
+
+    const getRequest = store.get(id);
+
+    getRequest.onsuccess = () => {
+      const existing = getRequest.result;
+      if (!existing) {
+        reject(new Error('Scheduled transaction not found'));
+        return;
+      }
+
+      const updated = {
+        ...existing,
+        ...updates,
+        updatedAt: Date.now(),
+      };
+
+      const putRequest = store.put(updated);
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = () => reject(putRequest.error);
+    };
+
+    getRequest.onerror = () => reject(getRequest.error);
+  });
+}
+
+// Delete a scheduled transaction
+export async function deleteScheduledTransaction(id: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(SCHEDULED_TRANSACTIONS_STORE, 'readwrite');
+    const store = transaction.objectStore(SCHEDULED_TRANSACTIONS_STORE);
+    const request = store.delete(id);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Mark a scheduled transaction as generated for a specific month
+export async function markScheduledTransactionGenerated(
+  id: string,
+  yearMonth: string // Format: "YYYY-MM"
+): Promise<void> {
+  const db = await openDB();
+
+  return new Promise(async (resolve, reject) => {
+    const txn = db.transaction(SCHEDULED_TRANSACTIONS_STORE, 'readwrite');
+    const store = txn.objectStore(SCHEDULED_TRANSACTIONS_STORE);
+
+    const getRequest = store.get(id);
+
+    getRequest.onsuccess = () => {
+      const existing = getRequest.result;
+      if (!existing) {
+        reject(new Error('Scheduled transaction not found'));
+        return;
+      }
+
+      // Add the month to generatedMonths if not already there
+      const generatedMonths = existing.generatedMonths || [];
+      if (!generatedMonths.includes(yearMonth)) {
+        generatedMonths.push(yearMonth);
+      }
+
+      const updated = {
+        ...existing,
+        generatedMonths,
+        updatedAt: Date.now(),
+      };
+
+      const putRequest = store.put(updated);
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = () => reject(putRequest.error);
+    };
+
+    getRequest.onerror = () => reject(getRequest.error);
   });
 }

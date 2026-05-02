@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Wallet, Receipt, LogOut, WifiOff, Cloud, RefreshCw } from 'lucide-react';
 import { OverviewPage } from './components/overview-page';
 import { TransactionsPage } from './components/transactions-page';
 import { AddTransactionDialog } from './components/add-transaction-dialog';
+import { AddScheduledTransactionDialog } from './components/add-scheduled-transaction-dialog';
 import { EditTransactionDialog } from './components/edit-transaction-dialog';
 import { MonthSelector } from './components/month-selector';
 import { useLocalTransactions } from '../hooks/useLocalTransactions';
@@ -12,6 +13,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { AuthScreen } from '../components/AuthScreen';
 import { Transaction } from './types';
 import { pullFromSupabase } from '../services/transactionService';
+import * as db from '../lib/db';
+import { generateScheduledTransactionsForMonth } from '../lib/scheduledTransactionUtils';
+import { logger } from '../lib/logger';
 
 type Tab = 'overview' | 'transactions';
 
@@ -41,9 +45,12 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isAddScheduledDialogOpen, setIsAddScheduledDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [scheduledTransactions, setScheduledTransactions] = useState<db.ScheduledTransaction[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Fetch transactions for selected month (single source)
   const { transactions, loading, addTransaction, updateTransaction, deleteTransaction, syncStatus } = useLocalTransactions(selectedMonth);
@@ -53,6 +60,46 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
 
   // Get all available months (lightweight query, just month strings)
   const availableMonths = useAllTransactionMonths();
+
+  // Load scheduled transactions
+  useEffect(() => {
+    const loadScheduledTransactions = async () => {
+      const scheduled = await db.getAllScheduledTransactions();
+      setScheduledTransactions(scheduled);
+    };
+    loadScheduledTransactions();
+  }, [refreshKey]);
+
+  // Auto-generate scheduled transactions for the selected month
+  useEffect(() => {
+    const generateForMonth = async () => {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      try {
+        const count = await generateScheduledTransactionsForMonth(year, month);
+        if (count > 0) {
+          logger.log(`Auto-generated ${count} scheduled transactions for ${selectedMonth}`);
+          setRefreshKey(prev => prev + 1); // Refresh to show new transactions
+        }
+      } catch (error) {
+        logger.error('Error auto-generating scheduled transactions:', error);
+      }
+    };
+    generateForMonth();
+  }, [selectedMonth]);
+
+  // Build category map for scheduled transactions
+  const categoryMap = useMemo(() => {
+    const map = new Map<number, { categoryName: string; subcategoryName: string }>();
+    categories.forEach(category => {
+      category.subcategories.forEach(subcategory => {
+        map.set(subcategory.id, {
+          categoryName: category.name,
+          subcategoryName: subcategory.name,
+        });
+      });
+    });
+    return map;
+  }, [categories]);
 
   // Manual sync from cloud
   const handleManualSync = async () => {
@@ -106,6 +153,42 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
   const handleDeleteTransaction = async () => {
     if (!selectedTransaction) return;
     await deleteTransaction(selectedTransaction.id);
+  };
+
+  const handleAddScheduledTransaction = async (scheduledTransaction: {
+    subcategoryId: number;
+    amount: number;
+    scheduleType: db.ScheduleType;
+    scheduleValue: number;
+    note: string;
+  }) => {
+    console.log('handleAddScheduledTransaction called with:', scheduledTransaction);
+    try {
+      const result = await db.addScheduledTransaction({
+        subcategoryId: scheduledTransaction.subcategoryId,
+        amount: scheduledTransaction.amount,
+        scheduleType: scheduledTransaction.scheduleType,
+        scheduleValue: scheduledTransaction.scheduleValue,
+        notes: scheduledTransaction.note || null,
+        isEnabled: true,
+      });
+      console.log('Scheduled transaction added successfully:', result);
+      setRefreshKey(prev => prev + 1); // Refresh list
+    } catch (error) {
+      console.error('Error adding scheduled transaction:', error);
+    }
+  };
+
+  const handleToggleScheduledEnabled = async (id: string, enabled: boolean) => {
+    await db.updateScheduledTransaction(id, { isEnabled: enabled });
+    setRefreshKey(prev => prev + 1);
+  };
+
+  const handleDeleteScheduled = async (id: string) => {
+    if (confirm('Are you sure you want to delete this scheduled expense?')) {
+      await db.deleteScheduledTransaction(id);
+      setRefreshKey(prev => prev + 1);
+    }
   };
 
   return (
@@ -196,8 +279,13 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
           <TransactionsPage
             selectedMonth={selectedMonth}
             transactions={transactions}
+            scheduledTransactions={scheduledTransactions}
+            categoryMap={categoryMap}
             onAddTransaction={() => setIsAddDialogOpen(true)}
+            onAddScheduledTransaction={() => setIsAddScheduledDialogOpen(true)}
             onTransactionClick={handleTransactionClick}
+            onToggleScheduledEnabled={handleToggleScheduledEnabled}
+            onDeleteScheduled={handleDeleteScheduled}
           />
         )}
       </div>
@@ -221,6 +309,15 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
         onUpdate={handleUpdateTransaction}
         onDelete={handleDeleteTransaction}
         transaction={selectedTransaction}
+        categories={categories}
+        loading={loadingCategories}
+      />
+
+      {/* Add Scheduled Transaction Dialog */}
+      <AddScheduledTransactionDialog
+        isOpen={isAddScheduledDialogOpen}
+        onClose={() => setIsAddScheduledDialogOpen(false)}
+        onAdd={handleAddScheduledTransaction}
         categories={categories}
         loading={loadingCategories}
       />
