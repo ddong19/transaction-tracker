@@ -2,7 +2,7 @@
 // This is the source of truth for transactions
 
 const DB_NAME = 'spending-tracker-db';
-const DB_VERSION = 2; // Incremented for scheduled transactions
+const DB_VERSION = 3; // Incremented for scheduled transaction sync fields
 const TRANSACTIONS_STORE = 'transactions';
 const SCHEDULED_TRANSACTIONS_STORE = 'scheduledTransactions';
 
@@ -34,6 +34,8 @@ export interface ScheduledTransaction {
   updatedAt: number;
   // Track which months have been generated (format: "YYYY-MM")
   generatedMonths: string[];
+  syncedToSupabase: boolean;
+  supabaseId: number | null;
 }
 
 // Open/create the database
@@ -242,7 +244,7 @@ export async function getEnabledScheduledTransactions(): Promise<ScheduledTransa
 
 // Add a new scheduled transaction
 export async function addScheduledTransaction(
-  scheduledTx: Omit<ScheduledTransaction, 'id' | 'createdAt' | 'updatedAt' | 'generatedMonths'>
+  scheduledTx: Omit<ScheduledTransaction, 'id' | 'createdAt' | 'updatedAt' | 'generatedMonths' | 'syncedToSupabase' | 'supabaseId'>
 ): Promise<ScheduledTransaction> {
   const db = await openDB();
 
@@ -252,6 +254,8 @@ export async function addScheduledTransaction(
     createdAt: Date.now(),
     updatedAt: Date.now(),
     generatedMonths: [],
+    syncedToSupabase: false,
+    supabaseId: null,
   };
 
   return new Promise((resolve, reject) => {

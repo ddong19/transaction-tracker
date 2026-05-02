@@ -15,6 +15,7 @@ import { Transaction } from './types';
 import { pullFromSupabase } from '../services/transactionService';
 import * as db from '../lib/db';
 import { generateScheduledTransactionsForMonth } from '../lib/scheduledTransactionUtils';
+import { syncScheduledToSupabase, pullScheduledFromSupabase, deleteScheduledTransaction as deleteScheduledTransactionService } from '../services/scheduledTransactionService';
 import { logger } from '../lib/logger';
 
 type Tab = 'overview' | 'transactions';
@@ -61,13 +62,20 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
   // Get all available months (lightweight query, just month strings)
   const availableMonths = useAllTransactionMonths();
 
-  // Load scheduled transactions
+  // Load scheduled transactions and sync
   useEffect(() => {
-    const loadScheduledTransactions = async () => {
+    const loadAndSyncScheduledTransactions = async () => {
+      // Pull from Supabase first
+      await pullScheduledFromSupabase();
+
+      // Load local scheduled transactions
       const scheduled = await db.getAllScheduledTransactions();
       setScheduledTransactions(scheduled);
+
+      // Sync any unsynced to Supabase
+      syncScheduledToSupabase().catch(err => logger.error('Background scheduled sync failed:', err));
     };
-    loadScheduledTransactions();
+    loadAndSyncScheduledTransactions();
   }, [refreshKey]);
 
   // Auto-generate scheduled transactions for the selected month
@@ -106,6 +114,9 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
     setIsSyncing(true);
     try {
       await pullFromSupabase();
+      await pullScheduledFromSupabase();
+      // Refresh scheduled transactions too
+      setRefreshKey(prev => prev + 1);
       // Reload the page to show the new data
       window.location.reload();
     } catch (error) {
@@ -173,6 +184,10 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
         isEnabled: true,
       });
       console.log('Scheduled transaction added successfully:', result);
+
+      // Sync to Supabase immediately
+      await syncScheduledToSupabase();
+
       setRefreshKey(prev => prev + 1); // Refresh list
     } catch (error) {
       console.error('Error adding scheduled transaction:', error);
@@ -180,13 +195,14 @@ function AuthenticatedApp({ onSignOut }: { onSignOut: () => Promise<void> }) {
   };
 
   const handleToggleScheduledEnabled = async (id: string, enabled: boolean) => {
-    await db.updateScheduledTransaction(id, { isEnabled: enabled });
+    await db.updateScheduledTransaction(id, { isEnabled: enabled, syncedToSupabase: false });
+    await syncScheduledToSupabase();
     setRefreshKey(prev => prev + 1);
   };
 
   const handleDeleteScheduled = async (id: string) => {
     if (confirm('Are you sure you want to delete this scheduled expense?')) {
-      await db.deleteScheduledTransaction(id);
+      await deleteScheduledTransactionService(id);
       setRefreshKey(prev => prev + 1);
     }
   };

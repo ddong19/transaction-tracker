@@ -156,6 +156,50 @@ export interface Database {
           user_id?: string
         }
       }
+      scheduled_transactions: {
+        Row: {
+          id: number
+          user_id: string
+          local_id: string
+          subcategory_id: number
+          amount: number
+          notes: string | null
+          schedule_type: 'day-of-month' | 'day-of-week'
+          schedule_value: number
+          is_enabled: boolean
+          generated_months: string[]
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          local_id: string
+          subcategory_id: number
+          amount: number
+          notes?: string | null
+          schedule_type: 'day-of-month' | 'day-of-week'
+          schedule_value: number
+          is_enabled?: boolean
+          generated_months?: string[]
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          local_id?: string
+          subcategory_id?: number
+          amount?: number
+          notes?: string | null
+          schedule_type?: 'day-of-month' | 'day-of-week'
+          schedule_value?: number
+          is_enabled?: boolean
+          generated_months?: string[]
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
