@@ -14,3 +14,8 @@ export function formatLocalDate(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+// Get today's date in YYYY-MM-DD format (local timezone)
+export function getTodayLocal(): string {
+  return formatLocalDate(new Date());
+}

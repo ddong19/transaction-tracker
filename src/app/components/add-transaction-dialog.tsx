@@ -6,6 +6,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { CategoryWithSubcategories } from '../../hooks/useSupabaseData';
+import { getTodayLocal } from '@/lib/dateUtils';
 
 interface AddTransactionDialogProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ export function AddTransactionDialog({ isOpen, onClose, onAdd, categories, loadi
   const [categoryId, setCategoryId] = useState('');
   const [subcategoryId, setSubcategoryId] = useState('');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getTodayLocal());
   const [note, setNote] = useState('');
 
   // Get subcategories for selected category
@@ -52,7 +53,7 @@ export function AddTransactionDialog({ isOpen, onClose, onAdd, categories, loadi
     setCategoryId('');
     setSubcategoryId('');
     setAmount('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getTodayLocal());
     setNote('');
     onClose();
   };
