@@ -17,8 +17,8 @@ For recurring expenses like rent or subscriptions, I use **Scheduled Transaction
 ---
 
 ## Screenshots
-
-<!-- Add screenshots here -->
+<img width="660" height="1434" alt="IMG_3502" src="https://github.com/user-attachments/assets/3aa3884d-98b1-4f1f-9c40-a8b43cac02bc" />
+<img width="660" height="1434" alt="IMG_3503" src="https://github.com/user-attachments/assets/cc64afa4-8b7a-413c-9a93-e0935083bd08" />
 
 ---
 
